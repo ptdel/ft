@@ -1,0 +1,59 @@
+* ft - file tag
+A proof-of-concept "pure bash" file tagging tool.  If you're looking for a
+production-ready file tagging system I would recommend [[https://tmsu.org/][tmsu]]. While relatively
+portable it relies on some newer tools in coreutils.
+
+A friend asked me why I used linux, and I responded by saying that I like that I
+can easily build tools for it.  When they asked what tools I'd written lately
+I had no interesting answer so here is something.
+
+#+BEGIN_SRC shell
+Usage: ft { -a tagN,... | -d tagN,... | -l file | -f tag | -c | -u }
+#+END_SRC
+
+** How it works
+Tags are symlinks to a file that are stored in a =.tags/= sub-directory in a
+directory that we want to manage.  The tag naming convention is 
+={tag}_{inode}_filename=.  Since a file's inode never changes as long as it
+is on the same file system, we can refer to it in the tag to repair broken
+symlinks if files are moved around.
+
+** Example
+Here is a directory with two files that have some tags on them:
+#+BEGIN_SRC shell
+somedir
+├── somefile
+├── someotherfile
+└── .tags
+    ├── bad_10097338_someotherfile -> /home/patrick/ft/somedir/someotherfile
+    ├── boring_10097338_someotherfile -> /home/patrick/ft/somedir/someotherfile
+    ├── cool_10097336_somefile -> /home/patrick/ft/somedir/somefile
+    ├── great_10097336_somefile -> /home/patrick/ft/somedir/somefile
+    ├── neat_10097336_somefile -> /home/patrick/ft/somedir/somefile
+    └── sad_10097338_someotherfile -> /home/patrick/ft/somedir/someotherfile
+#+END_SRC
+
+You can add tags with =-a=, list tags on a file with =-l=, and remove them with
+ =-d=:
+
+#+BEGIN_SRC shell
+$ ft -a some,random,tags somefile 
+$ ft -l somefile
+random,tags,neat,cool,some,great
+$ ft -d some,random,tags somefile
+$ ft -l somefile
+neat,cool,great
+#+END_SRC
+
+You can look up files by tag with =-f=:
+#+BEGIN_SRC shell
+$ ft -f cool
+/home/patrick/ft/somedir/somefile
+#+END_SRC
+
+Untagged files can be listed with =-u=, and broken tags can be cleaned up with
+ =-c=.
+
+** Todo's
+- currently there is no method for repairing broken symlinks by referring to
+inode+filename.

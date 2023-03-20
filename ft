@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+
+### Bash settings
+
+# abort on nonzero, unbound variables, errors within pipes.
+set -eou pipefail
+set +x
+IFS=", "
+### Variables
+
+### Helper Functions
+
+### Functions
+create_file_tag () {
+    # example: create_tag muhfile muhtag
+    local filename="$1"
+    local tagname="$2"
+    local abs_filepath abs_tagdir
+
+    abs_filepath="$(realpath "$filename")"
+    abs_tagdir="${abs_filepath%/*}/.tags/"
+    
+    # if it doesn't already exist, we create a .tags sub-directory in the same
+    # directory as the file that we want to tag.
+    mkdir -p "$abs_tagdir"
+
+    # a tag for a file is just a symlink that lives in the .tags directory
+    # adjacent to the file.
+    # the naming convention (at the moment) for a tag is tagname_inode_file_name
+    ln -s \
+       "$abs_filepath" \
+       "${abs_tagdir}/${tagname}_$(stat -c %i "$abs_filepath")_${filename}"
+}
+
+delete_file_tag () {
+    local filename="$1"
+    local tagpattern="$2"
+
+    find "$PWD" -type l -iname "${tagpattern}*${filename}" -delete
+}
+
+find_files_by_tag () {
+    local tagpattern="$1"
+
+    # right now it's assumed that when you try to find a file by tag you are at
+    # least at the top level of some directory with a .tags sub-directory or
+    # child directories with their own .tags sub-directory
+    find "$PWD" -type l -iname "${tagpattern}*" -exec readlink -f {} \; 
+}
+
+list_tags_on_file () {
+    local filename="$1"
+    local abs_filepath
+
+    abs_filepath="$(realpath "$filename")"
+
+    # again, we're assuming that if I'm looking for the tags for the file
+    # somedir/somefile that our $PWD is somedir.
+    # outputs one tag per line.
+    find "$PWD" -lname "$abs_filepath" -print0 \
+	| xargs -0 -r -n 1 basename \
+	| cut -d_ -f1 \
+        | tr "\n" "," \
+        | sed "s/,$//g"
+}
+
+list_untagged_files () {
+    for f in "$PWD"/* ; do
+	find "$PWD" -lname "$(realpath "$f")" -print0 \
+	    | xargs -0 -I {} [[ -z "{}" ]] && echo "$f"
+    done
+}
+
+clean_broken_tags () {
+    find "$PWD" -xtype l -path "*.tags/*" -delete
+}
+
+# print usage statement.
+usage () {
+    echo "Usage: $0 { -a tagN,... | -d tagN,... | -l file | -f tag | -c | -u }" 1>&2
+    exit 1;
+}
+
+### Entry-Point
+
+main () {
+    # (a)dd and (d)elete are mutually exclusive, so we validate that only one is
+    # set to true in our getopts.
+    local add=false
+    local del=false
+    local taglist tagpattern
+
+    # * is the concatenated array of arguments @, and $# is the number of
+    # arguments in the array, so this notation is asking for the last element
+    # in the array which should be our filename
+    local filename=${*:$#}
+
+    while getopts "a:d:lf:cu" opt; do
+	case "${opt}" in
+	    a)
+		add=true; [[ $add == "$del" ]] && usage
+		read -r -a taglist <<< "$OPTARG"
+		for tag in "${taglist[@]}"; do
+		    create_file_tag "$filename" "$tag"
+		    done
+		;;
+	    d)  
+		del=true; [[ $del == "$add" ]] && usage
+		read -r -a taglist <<< "$OPTARG"
+		for tag in "${taglist[@]}"; do
+		    delete_file_tag "$filename" "$tag"
+		    done
+		;;
+	    l)
+		list_tags_on_file "$filename"
+		;;
+	    f)
+		tagpattern="${OPTARG}"
+		find_files_by_tag "$tagpattern"
+		;;
+	    c)
+		clean_broken_tags
+		;;
+	    u)
+		list_untagged_files
+		;;
+	    \?)
+		usage
+		;;
+	esac
+    done
+}
+
+main "${@}"
